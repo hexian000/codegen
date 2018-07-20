@@ -6,21 +6,21 @@
 package main
 
 import (
+	"bytes"
 	"flag"
+	"fmt"
+	"go/ast"
+	"go/format"
+	"go/importer"
+	"go/parser"
+	"go/printer"
+	"go/token"
+	"go/types"
+	"io/ioutil"
 	"log"
 	"os"
-	"go/token"
-	"bytes"
-	"strings"
-	"go/parser"
-	"go/ast"
-	"go/types"
-	"go/importer"
-	"go/format"
-	"io/ioutil"
 	"path/filepath"
-	"fmt"
-	"go/printer"
+	"strings"
 )
 
 const (

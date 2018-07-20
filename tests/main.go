@@ -17,7 +17,7 @@ type A struct {
 	sss [][]string
 	ms  map[string]string
 	mms map[string]map[string]string
-	si struct {
+	si  struct {
 		uint64
 	}
 	C
