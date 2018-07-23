@@ -95,7 +95,7 @@ b=append(b,byte(l>>24),byte(l>>16),byte(l>>8),byte(l))
 // load expressions
 // Arguments to format are
 //	[1]: var name
-//	[1]: type name
+//	[2]: type name
 const (
 	// exprLoad8 loads a 8-bit integer field from byte slice.
 	exprLoad8 = `%[1]s=%[2]s(b[0])
