@@ -217,18 +217,35 @@ b=b[l:]
 		}
 	case *ast.ArrayType:
 		if serializing {
-			out.WriteString(fmt.Sprintf(exprAppendLen, v))
-			out.WriteString(fmt.Sprintf(`for _,element:=range %[1]s {
+			if typ.Len != nil { // array
+				out.WriteString(fmt.Sprintf(`for _,element:=range %[1]s {
+	`, v))
+				t.genField(out, "element", typ.Elt, serializing)
+				out.WriteString("}\n")
+			} else { // slice
+				out.WriteString(fmt.Sprintf(exprAppendLen, v))
+				out.WriteString(fmt.Sprintf(`for _,element:=range %[1]s {
 `, v))
-			t.genField(out, "element", typ.Elt, serializing)
-			out.WriteString("}\n")
-			out.WriteString(exprAppendLenEnd)
+				t.genField(out, "element", typ.Elt, serializing)
+				out.WriteString("}\n")
+				out.WriteString(exprAppendLenEnd)
+			}
 		} else {
-			out.WriteString(exprLoadLen)
-			out.WriteString(fmt.Sprintf(`%[1]s=make(%[2]s,l,l)
+			if typ.Len != nil { // array
+				out.WriteString(fmt.Sprintf(`for k:=uint(0);k<%[1]s;k++{
+`, t.printNode(typ.Len)))
+				t.genField(out, fmt.Sprintf("%[1]s[k]", v), typ.Elt, serializing)
+				out.WriteString("}\n")
+			} else { // slice
+				out.WriteString(exprLoadLen)
+				out.WriteString(fmt.Sprintf(`%[1]s=make(%[2]s,l,l)
 b=b[l:]
+for k:=uint(0);k<l;k++{
 `, v, t.printNode(typ)))
-			out.WriteString(exprLoadLenEnd)
+				t.genField(out, fmt.Sprintf("%[1]s[k]", v), typ.Elt, serializing)
+				out.WriteString("}\n")
+				out.WriteString(exprLoadLenEnd)
+			}
 		}
 	case *ast.MapType:
 		if serializing {

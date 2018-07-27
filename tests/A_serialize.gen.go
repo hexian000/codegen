@@ -10,6 +10,9 @@ var _ = unsafe.Sizeof(0)
 
 func (i *A) Serialize(b []byte) []byte {
 	b = i.B.Serialize(b)
+	for _, element := range i.a {
+		b = element.Serialize(b)
+	}
 	{
 		l := len(i.s)
 		b = append(b, byte(l>>24), byte(l>>16), byte(l>>8), byte(l))
@@ -93,6 +96,9 @@ func (i *A) Serialize(b []byte) []byte {
 
 func (i *A) Deserialize(b []byte) []byte {
 	b = i.B.Deserialize(b)
+	for k := uint(0); k < 3; k++ {
+		b = i.a[k].Deserialize(b)
+	}
 	{
 		l := uint(b[3]) | uint(b[2])<<8 | uint(b[1])<<16 | uint(b[0])<<24
 		b = b[4:]
@@ -104,12 +110,36 @@ func (i *A) Deserialize(b []byte) []byte {
 		b = b[4:]
 		i.ss = make([]string, l, l)
 		b = b[l:]
+		for k := uint(0); k < l; k++ {
+			{
+				l := uint(b[3]) | uint(b[2])<<8 | uint(b[1])<<16 | uint(b[0])<<24
+				b = b[4:]
+				i.ss[k] = string(b[:l])
+				b = b[l:]
+			}
+		}
 	}
 	{
 		l := uint(b[3]) | uint(b[2])<<8 | uint(b[1])<<16 | uint(b[0])<<24
 		b = b[4:]
 		i.sss = make([][]string, l, l)
 		b = b[l:]
+		for k := uint(0); k < l; k++ {
+			{
+				l := uint(b[3]) | uint(b[2])<<8 | uint(b[1])<<16 | uint(b[0])<<24
+				b = b[4:]
+				i.sss[k] = make([]string, l, l)
+				b = b[l:]
+				for k := uint(0); k < l; k++ {
+					{
+						l := uint(b[3]) | uint(b[2])<<8 | uint(b[1])<<16 | uint(b[0])<<24
+						b = b[4:]
+						i.sss[k][k] = string(b[:l])
+						b = b[l:]
+					}
+				}
+			}
+		}
 	}
 	{
 		l := uint(b[3]) | uint(b[2])<<8 | uint(b[1])<<16 | uint(b[0])<<24

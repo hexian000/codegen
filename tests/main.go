@@ -12,6 +12,7 @@ type C rune
 //go:generate go run ../serialize.go -type=A,B,C
 type A struct {
 	B
+	a   [3]B
 	s   string
 	ss  []string
 	sss [][]string
