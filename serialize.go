@@ -23,6 +23,14 @@ import (
 )
 
 const (
+	funcTemplateSerializeLen = iota
+	funcTemplateSerialize
+	funcTemplateDeserialize
+)
+
+type funcTemplate int
+
+const (
 	// fileHeader is a generated file header.
 	// Arguments to format are
 	//	[1]: package name
@@ -33,7 +41,10 @@ const (
 
 package %[1]s
 
-import "unsafe"
+import (
+	"encoding/binary"
+	"unsafe"
+)
 
 var _ = unsafe.Sizeof(0)
 `
@@ -41,54 +52,63 @@ var _ = unsafe.Sizeof(0)
 	// funcSerialize is definition for Serialize function.
 	// Arguments to format are
 	//	[1]: type name
-	funcSerialize = `func (i *%[1]s) Serialize(b []byte) []byte {
+	funcSerializeLen = `func (i *%[1]s) SerializeLen() (n int) {
 `
-	funcSerializeEnd = `return b
+	funcSerializeLenEnd = `return
 }
+`
+
+	// funcSerialize is definition for Serialize function.
+	// Arguments to format are
+	//	[1]: type name
+	funcSerialize = `func (i *%[1]s) Serialize(b []byte, order binary.ByteOrder) {
+`
+	funcSerializeEnd = `}
 `
 
 	// funcDeserialize is definition for Deserialize function.
 	// Arguments to format are
 	//	[1]: type name
-	funcDeserialize = `func (i *%[1]s) Deserialize(b []byte) []byte {
+	funcDeserialize = `func (i *%[1]s) Deserialize(b []byte, order binary.ByteOrder) {
 `
-	funcDeserializeEnd = `return b
-}
+	funcDeserializeEnd = `}
 `
 
 	// blankLine is a blank line.
 	blankLine = "\n"
 )
 
-// append expressions
+// put expressions
 // Arguments to format are
-//	[1]: type name
+//	[1]: var name
 const (
-	// exprAppend8 appends a 8-bit integer field in byte slice.
-	exprAppend8 = `b=append(b,byte(%[1]s))
+	// exprPut8 appends a 8-bit integer field in byte slice.
+	exprPut8 = `b[0]=byte(%[1]s)
+b=b[1:]
 `
 
-	// exprAppend16 appends a 16-bit integer field in byte slice.
-	exprAppend16 = `b=append(b,byte(%[1]s>>8),byte(%[1]s))
+	// exprPut16 appends a 16-bit integer field in byte slice.
+	exprPut16 = `order.PutUint16(b,uint16(%[1]s))
+b=b[2:]
 `
 
-	// exprAppend32 appends a 32-bit integer field in byte slice.
-	exprAppend32 = `b=append(b,byte(%[1]s>>24),byte(%[1]s>>16),byte(%[1]s>>8),byte(%[1]s))
+	// exprPut32 appends a 32-bit integer field in byte slice.
+	exprPut32 = `order.PutUint32(b,uint32(%[1]s))
+b=b[4:]
 `
 
-	// exprAppend64 appends a 64-bit integer field in byte slice.
-	exprAppend64 = `b=append(b,byte(%[1]s>>56),byte(%[1]s>>48),byte(%[1]s>>40),byte(%[1]s>>32),byte(%[1]s>>24),byte(%[1]s>>16),byte(%[1]s>>8),byte(%[1]s))
+	// exprPut64 appends a 64-bit integer field in byte slice.
+	exprPut64 = `order.PutUint64(b,uint64(%[1]s))
+b=b[8:]
 `
 
-	// exprAppendLen appends a 32-bit length field in byte slice.
-	exprAppendLen = `{
-l:=len(%[1]s)
-b=append(b,byte(l>>24),byte(l>>16),byte(l>>8),byte(l))
+	// exprPutLen appends a 32-bit length field in byte slice.
+	exprPutLen = `order.PutUint32(b,uint32(len(%[1]s)))
+b=b[4:]
 `
-	exprAppendLenEnd = "}\n"
 
-	// exprAppendUnsafe appends a field as its in-memory-representation. This may be arch specific.
-	exprAppendUnsafe = `b=append(b,(*(*[unsafe.Sizeof(%[1]s)]byte)(unsafe.Pointer(&%[1]s)))[:]...)
+	// exprPutUnsafe appends a field as its in-memory-representation. This may be arch specific.
+	exprPutUnsafe = `b=b[copy(b,(*(*[unsafe.Sizeof(%[1]s)]byte)(unsafe.Pointer(&%[1]s)))[:]):]
 `
 )
 
@@ -103,23 +123,23 @@ b=b[1:]
 `
 
 	// exprLoad16 loads a 16-bit integer field from byte slice.
-	exprLoad16 = `%[1]s=%[2]s(b[1])|%[2]s(b[0])<<8
+	exprLoad16 = `%[1]s=%[2]s(order.Uint16(b[:2]))
 b=b[2:]
 `
 
 	// exprLoad32 loads a 32-bit integer field from byte slice.
-	exprLoad32 = `%[1]s=%[2]s(b[3])|%[2]s(b[2])<<8|%[2]s(b[1])<<16|%[2]s(b[0])<<24
+	exprLoad32 = `%[1]s=%[2]s(order.Uint32(b[:4]))
 b=b[4:]
 `
 
 	// exprLoad64 loads a 64-bit integer field from byte slice.
-	exprLoad64 = `%[1]s=%[2]s(b[7])|%[2]s(b[6])<<8|%[2]s(b[5])<<16|%[2]s(b[4])<<24|%[2]s(b[3])<<32|%[2]s(b[2])<<40|%[2]s(b[1])<<48|%[2]s(b[0])<<56
+	exprLoad64 = `%[1]s=%[2]s(order.Uint64(b[:8]))
 b=b[8:]
 `
 
 	// exprLoadLen appends a 32-bit length field in byte slice.
 	exprLoadLen = `{
-l:=uint(b[3])|uint(b[2])<<8|uint(b[1])<<16|uint(b[0])<<24
+l:=uint(order.Uint32(b[:4]))
 b=b[4:]
 `
 	exprLoadLenEnd = "}\n"
@@ -156,85 +176,130 @@ func (t *context) printNode(node interface{}) string {
 	return b.String()
 }
 
-func (t *context) genField(out *bytes.Buffer, v string, expr ast.Expr, serializing bool) {
+func (t *context) genField(out *bytes.Buffer, v string, expr ast.Expr, template funcTemplate) {
 	switch typ := expr.(type) {
 	case *ast.Ident:
 		typeName := typ.String()
 		switch typeName {
 		case "bool":
 		case "int8", "uint8", "byte":
-			if serializing {
-				out.WriteString(fmt.Sprintf(exprAppend8, v))
-			} else {
+			switch template {
+			case funcTemplateSerializeLen:
+				out.WriteString(`n++
+`)
+			case funcTemplateSerialize:
+				out.WriteString(fmt.Sprintf(exprPut8, v))
+			case funcTemplateDeserialize:
 				out.WriteString(fmt.Sprintf(exprLoad8, v, typeName))
 			}
 		case "int16", "uint16":
-			if serializing {
-				out.WriteString(fmt.Sprintf(exprAppend16, v))
-			} else {
+			switch template {
+			case funcTemplateSerializeLen:
+				out.WriteString(`n+=2
+`)
+			case funcTemplateSerialize:
+				out.WriteString(fmt.Sprintf(exprPut16, v))
+			case funcTemplateDeserialize:
 				out.WriteString(fmt.Sprintf(exprLoad16, v, typeName))
 			}
 		case "int32", "uint32", "rune":
-			if serializing {
-				out.WriteString(fmt.Sprintf(exprAppend32, v))
-			} else {
+			switch template {
+			case funcTemplateSerializeLen:
+				out.WriteString(`n+=4
+`)
+			case funcTemplateSerialize:
+				out.WriteString(fmt.Sprintf(exprPut32, v))
+			case funcTemplateDeserialize:
 				out.WriteString(fmt.Sprintf(exprLoad32, v, typeName))
 			}
 		case "int64", "uint64", "int", "uint":
-			if serializing {
-				out.WriteString(fmt.Sprintf(exprAppend64, v))
-			} else {
+			switch template {
+			case funcTemplateSerializeLen:
+				out.WriteString(`n+=8
+`)
+			case funcTemplateSerialize:
+				out.WriteString(fmt.Sprintf(exprPut64, v))
+			case funcTemplateDeserialize:
 				out.WriteString(fmt.Sprintf(exprLoad64, v, typeName))
 			}
 		case "float32", "float64", "complex64", "complex128":
-			if serializing {
-				out.WriteString(fmt.Sprintf(exprAppendUnsafe, v))
-			} else {
+			switch template {
+			case funcTemplateSerializeLen:
+				out.WriteString(fmt.Sprintf(`n+=int(unsafe.Sizeof(%[1]s))
+`, v))
+			case funcTemplateSerialize:
+				out.WriteString(fmt.Sprintf(exprPutUnsafe, v))
+			case funcTemplateDeserialize:
 				out.WriteString(fmt.Sprintf(exprLoadUnsafe, v, typeName))
 			}
 		case "string":
-			if serializing {
-				out.WriteString(fmt.Sprintf(exprAppendLen, v))
-				out.WriteString(fmt.Sprintf(`b=append(b,[]byte(%[1]s)...)
+			switch template {
+			case funcTemplateSerializeLen:
+				out.WriteString(fmt.Sprintf(`n+=4+len(%[1]s)
 `, v))
-				out.WriteString(exprAppendLenEnd)
-			} else {
-				out.WriteString(exprLoadLen)
-				out.WriteString(fmt.Sprintf(`%[1]s=string(b[:l])
-b=b[l:]
+			case funcTemplateSerialize:
+				out.WriteString(fmt.Sprintf(`_=b[:4+len(%[1]s)]
+order.PutUint32(b,uint32(len(%[1]s)))
+b=b[4+copy(b[4:],%[1]s):]
 `, v))
-				out.WriteString(exprLoadLenEnd)
+			case funcTemplateDeserialize:
+				out.WriteString(fmt.Sprintf(`{
+n:=order.Uint32(b)
+%[1]s=string(b[4:4+n])
+b=b[4+n:]
+}
+`, v))
 			}
 		default:
-			if serializing {
-				t.pkg.Scope().Lookup(typeName)
-				out.WriteString(fmt.Sprintf(`b=%[1]s.Serialize(b)
+			switch template {
+			case funcTemplateSerializeLen:
+				out.WriteString(fmt.Sprintf(`n+=%[1]s.SerializeLen()
 `, v))
-			} else {
-				out.WriteString(fmt.Sprintf(`b=%[1]s.Deserialize(b)
+			case funcTemplateSerialize:
+				t.pkg.Scope().Lookup(typeName)
+				out.WriteString(fmt.Sprintf(`%[1]s.Serialize(b,order)
+b=b[%[1]s.SerializeLen():]
+`, v))
+			case funcTemplateDeserialize:
+				out.WriteString(fmt.Sprintf(`%[1]s.Deserialize(b,order)
+b=b[%[1]s.SerializeLen():]
 `, v))
 			}
 		}
 	case *ast.ArrayType:
-		if serializing {
+		switch template {
+		case funcTemplateSerializeLen:
 			if typ.Len != nil { // array
 				out.WriteString(fmt.Sprintf(`for _,element:=range %[1]s {
-	`, v))
-				t.genField(out, "element", typ.Elt, serializing)
+`, v))
+				t.genField(out, "element", typ.Elt, template)
 				out.WriteString("}\n")
 			} else { // slice
-				out.WriteString(fmt.Sprintf(exprAppendLen, v))
+				out.WriteString(`n+=4
+`)
 				out.WriteString(fmt.Sprintf(`for _,element:=range %[1]s {
 `, v))
-				t.genField(out, "element", typ.Elt, serializing)
+				t.genField(out, "element", typ.Elt, template)
 				out.WriteString("}\n")
-				out.WriteString(exprAppendLenEnd)
 			}
-		} else {
+		case funcTemplateSerialize:
+			if typ.Len != nil { // array
+				out.WriteString(fmt.Sprintf(`for _,element:=range %[1]s {
+`, v))
+				t.genField(out, "element", typ.Elt, template)
+				out.WriteString("}\n")
+			} else { // slice
+				out.WriteString(fmt.Sprintf(exprPutLen, v))
+				out.WriteString(fmt.Sprintf(`for _,element:=range %[1]s {
+`, v))
+				t.genField(out, "element", typ.Elt, template)
+				out.WriteString("}\n")
+			}
+		case funcTemplateDeserialize:
 			if typ.Len != nil { // array
 				out.WriteString(fmt.Sprintf(`for k:=uint(0);k<%[1]s;k++{
 `, t.printNode(typ.Len)))
-				t.genField(out, fmt.Sprintf("%[1]s[k]", v), typ.Elt, serializing)
+				t.genField(out, fmt.Sprintf("%[1]s[k]", v), typ.Elt, template)
 				out.WriteString("}\n")
 			} else { // slice
 				out.WriteString(exprLoadLen)
@@ -242,29 +307,37 @@ b=b[l:]
 b=b[l:]
 for k:=uint(0);k<l;k++{
 `, v, t.printNode(typ)))
-				t.genField(out, fmt.Sprintf("%[1]s[k]", v), typ.Elt, serializing)
+				t.genField(out, fmt.Sprintf("%[1]s[k]", v), typ.Elt, template)
 				out.WriteString("}\n")
 				out.WriteString(exprLoadLenEnd)
 			}
 		}
 	case *ast.MapType:
-		if serializing {
-			out.WriteString(fmt.Sprintf(exprAppendLen, v))
+		switch template {
+		case funcTemplateSerializeLen:
+			out.WriteString(`n+=4
+`)
 			out.WriteString(fmt.Sprintf(`for key,value:=range %[1]s {
 `, v))
-			t.genField(out, "key", typ.Key, serializing)
-			t.genField(out, "value", typ.Value, serializing)
+			t.genField(out, "key", typ.Key, template)
+			t.genField(out, "value", typ.Value, template)
 			out.WriteString("}\n")
-			out.WriteString(exprAppendLenEnd)
-		} else {
+		case funcTemplateSerialize:
+			out.WriteString(fmt.Sprintf(exprPutLen, v))
+			out.WriteString(fmt.Sprintf(`for key,value:=range %[1]s {
+`, v))
+			t.genField(out, "key", typ.Key, template)
+			t.genField(out, "value", typ.Value, template)
+			out.WriteString("}\n")
+		case funcTemplateDeserialize:
 			out.WriteString(exprLoadLen)
 			out.WriteString(fmt.Sprintf(`m:=make(map[%[1]s]%[2]s)
 for k:=uint(0);k<l;k++{
 var key %[1]s
 var value %[2]s
 `, t.printNode(typ.Key), t.printNode(typ.Value)))
-			t.genField(out, "key", typ.Key, serializing)
-			t.genField(out, "value", typ.Value, serializing)
+			t.genField(out, "key", typ.Key, template)
+			t.genField(out, "value", typ.Value, template)
 			out.WriteString(fmt.Sprintf(`m[key]=value
 }
 %[1]s=m
@@ -272,20 +345,20 @@ var value %[2]s
 			out.WriteString(exprLoadLenEnd)
 		}
 	case *ast.StructType:
-		t.genStruct(out, v, typ, serializing)
+		t.genStruct(out, v, typ, template)
 	default:
 		log.Fatalln("unsupported type:", t.printNode(expr))
 	}
 }
 
-func (t *context) genStruct(out *bytes.Buffer, v string, s *ast.StructType, serializing bool) {
+func (t *context) genStruct(out *bytes.Buffer, v string, s *ast.StructType, template funcTemplate) {
 	for _, f := range s.Fields.List {
 		if len(f.Names) > 0 {
 			for _, n := range f.Names {
-				t.genField(out, fmt.Sprintf("%s.%s", v, n.String()), f.Type, serializing)
+				t.genField(out, fmt.Sprintf("%s.%s", v, n.String()), f.Type, template)
 			}
 		} else {
-			t.genField(out, fmt.Sprintf("%s.%s", v, t.printNode(f.Type)), f.Type, serializing)
+			t.genField(out, fmt.Sprintf("%s.%s", v, t.printNode(f.Type)), f.Type, template)
 		}
 	}
 }
@@ -303,21 +376,31 @@ func (t *context) generate(typeName string) {
 	log.Printf("generating for %s.%s", t.pkg.Name(), typeName)
 
 	out := t.initOutput(typeName)
+
+	out.WriteString(blankLine)
+	out.WriteString(fmt.Sprintf(funcSerializeLen, typeName))
+	if structType, ok := typeSpec.Type.(*ast.StructType); ok {
+		t.genStruct(out, "i", structType, funcTemplateSerializeLen)
+	} else {
+		t.genField(out, "*i", typeSpec.Type, funcTemplateSerializeLen)
+	}
+	out.WriteString(funcSerializeLenEnd)
+
 	out.WriteString(blankLine)
 	out.WriteString(fmt.Sprintf(funcSerialize, typeName))
 	if structType, ok := typeSpec.Type.(*ast.StructType); ok {
-		t.genStruct(out, "i", structType, true)
+		t.genStruct(out, "i", structType, funcTemplateSerialize)
 	} else {
-		t.genField(out, "*i", typeSpec.Type, true)
+		t.genField(out, "*i", typeSpec.Type, funcTemplateSerialize)
 	}
 	out.WriteString(funcSerializeEnd)
 
 	out.WriteString(blankLine)
 	out.WriteString(fmt.Sprintf(funcDeserialize, typeName))
 	if structType, ok := typeSpec.Type.(*ast.StructType); ok {
-		t.genStruct(out, "i", structType, false)
+		t.genStruct(out, "i", structType, funcTemplateDeserialize)
 	} else {
-		t.genField(out, "f:", typeSpec.Type, false)
+		t.genField(out, "f:", typeSpec.Type, funcTemplateDeserialize)
 		out.WriteString(fmt.Sprintf("*i=%[1]s(f)\n", typeName))
 	}
 	out.WriteString(funcDeserializeEnd)

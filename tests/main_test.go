@@ -1,23 +1,29 @@
 package main
 
-import "testing"
+import (
+	"encoding/binary"
+	"testing"
+)
 
 var a = A{}
 
 func BenchmarkA_Serialize(b *testing.B) {
-	data := make([]byte, 0, 65536)
+	l := a.SerializeLen()
+	data := make([]byte, l, l)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = a.Serialize(data)
+		a.Serialize(data, binary.BigEndian)
 	}
 }
 
 func BenchmarkA_Deserialize(b *testing.B) {
-	data := a.Serialize(make([]byte, 0, 65536))
+	l := a.SerializeLen()
+	data := make([]byte, l, l)
+	a.Serialize(data, binary.BigEndian)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = a.Deserialize(data)
+		a.Deserialize(data, binary.BigEndian)
 	}
 }

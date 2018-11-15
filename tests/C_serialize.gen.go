@@ -4,18 +4,25 @@
 
 package main
 
-import "unsafe"
+import (
+	"encoding/binary"
+	"unsafe"
+)
 
 var _ = unsafe.Sizeof(0)
 
-func (i *C) Serialize(b []byte) []byte {
-	b = append(b, byte(*i>>24), byte(*i>>16), byte(*i>>8), byte(*i))
-	return b
+func (i *C) SerializeLen() (n int) {
+	n += 4
+	return
 }
 
-func (i *C) Deserialize(b []byte) []byte {
-	f := rune(b[3]) | rune(b[2])<<8 | rune(b[1])<<16 | rune(b[0])<<24
+func (i *C) Serialize(b []byte, order binary.ByteOrder) {
+	order.PutUint32(b, uint32(*i))
+	b = b[4:]
+}
+
+func (i *C) Deserialize(b []byte, order binary.ByteOrder) {
+	f := rune(order.Uint32(b[:4]))
 	b = b[4:]
 	*i = C(f)
-	return b
 }

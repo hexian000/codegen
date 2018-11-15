@@ -4,197 +4,205 @@
 
 package main
 
-import "unsafe"
+import (
+	"encoding/binary"
+	"unsafe"
+)
 
 var _ = unsafe.Sizeof(0)
 
-func (i *A) Serialize(b []byte) []byte {
-	b = i.B.Serialize(b)
+func (i *A) SerializeLen() (n int) {
+	n += i.B.SerializeLen()
 	for _, element := range i.a {
-		b = element.Serialize(b)
+		n += element.SerializeLen()
 	}
-	{
-		l := len(i.s)
-		b = append(b, byte(l>>24), byte(l>>16), byte(l>>8), byte(l))
-		b = append(b, []byte(i.s)...)
+	n += 4 + len(i.s)
+	n += 4
+	for _, element := range i.ss {
+		n += 4 + len(element)
 	}
-	{
-		l := len(i.ss)
-		b = append(b, byte(l>>24), byte(l>>16), byte(l>>8), byte(l))
-		for _, element := range i.ss {
-			{
-				l := len(element)
-				b = append(b, byte(l>>24), byte(l>>16), byte(l>>8), byte(l))
-				b = append(b, []byte(element)...)
-			}
+	n += 4
+	for _, element := range i.sss {
+		n += 4
+		for _, element := range element {
+			n += 4 + len(element)
 		}
 	}
-	{
-		l := len(i.sss)
-		b = append(b, byte(l>>24), byte(l>>16), byte(l>>8), byte(l))
-		for _, element := range i.sss {
-			{
-				l := len(element)
-				b = append(b, byte(l>>24), byte(l>>16), byte(l>>8), byte(l))
-				for _, element := range element {
-					{
-						l := len(element)
-						b = append(b, byte(l>>24), byte(l>>16), byte(l>>8), byte(l))
-						b = append(b, []byte(element)...)
-					}
-				}
-			}
+	n += 4
+	for key, value := range i.ms {
+		n += 4 + len(key)
+		n += 4 + len(value)
+	}
+	n += 4
+	for key, value := range i.mms {
+		n += 4 + len(key)
+		n += 4
+		for key, value := range value {
+			n += 4 + len(key)
+			n += 4 + len(value)
 		}
 	}
-	{
-		l := len(i.ms)
-		b = append(b, byte(l>>24), byte(l>>16), byte(l>>8), byte(l))
-		for key, value := range i.ms {
-			{
-				l := len(key)
-				b = append(b, byte(l>>24), byte(l>>16), byte(l>>8), byte(l))
-				b = append(b, []byte(key)...)
-			}
-			{
-				l := len(value)
-				b = append(b, byte(l>>24), byte(l>>16), byte(l>>8), byte(l))
-				b = append(b, []byte(value)...)
-			}
-		}
-	}
-	{
-		l := len(i.mms)
-		b = append(b, byte(l>>24), byte(l>>16), byte(l>>8), byte(l))
-		for key, value := range i.mms {
-			{
-				l := len(key)
-				b = append(b, byte(l>>24), byte(l>>16), byte(l>>8), byte(l))
-				b = append(b, []byte(key)...)
-			}
-			{
-				l := len(value)
-				b = append(b, byte(l>>24), byte(l>>16), byte(l>>8), byte(l))
-				for key, value := range value {
-					{
-						l := len(key)
-						b = append(b, byte(l>>24), byte(l>>16), byte(l>>8), byte(l))
-						b = append(b, []byte(key)...)
-					}
-					{
-						l := len(value)
-						b = append(b, byte(l>>24), byte(l>>16), byte(l>>8), byte(l))
-						b = append(b, []byte(value)...)
-					}
-				}
-			}
-		}
-	}
-	b = append(b, byte(i.si.uint64>>56), byte(i.si.uint64>>48), byte(i.si.uint64>>40), byte(i.si.uint64>>32), byte(i.si.uint64>>24), byte(i.si.uint64>>16), byte(i.si.uint64>>8), byte(i.si.uint64))
-	b = i.C.Serialize(b)
-	return b
+	n += 8
+	n += i.C.SerializeLen()
+	return
 }
 
-func (i *A) Deserialize(b []byte) []byte {
-	b = i.B.Deserialize(b)
-	for k := uint(0); k < 3; k++ {
-		b = i.a[k].Deserialize(b)
+func (i *A) Serialize(b []byte, order binary.ByteOrder) {
+	i.B.Serialize(b, order)
+	b = b[i.B.SerializeLen():]
+	for _, element := range i.a {
+		element.Serialize(b, order)
+		b = b[element.SerializeLen():]
 	}
-	{
-		l := uint(b[3]) | uint(b[2])<<8 | uint(b[1])<<16 | uint(b[0])<<24
+	_ = b[:4+len(i.s)]
+	order.PutUint32(b, uint32(len(i.s)))
+	b = b[4+copy(b[4:], i.s):]
+	order.PutUint32(b, uint32(len(i.ss)))
+	b = b[4:]
+	for _, element := range i.ss {
+		_ = b[:4+len(element)]
+		order.PutUint32(b, uint32(len(element)))
+		b = b[4+copy(b[4:], element):]
+	}
+	order.PutUint32(b, uint32(len(i.sss)))
+	b = b[4:]
+	for _, element := range i.sss {
+		order.PutUint32(b, uint32(len(element)))
 		b = b[4:]
-		i.s = string(b[:l])
-		b = b[l:]
+		for _, element := range element {
+			_ = b[:4+len(element)]
+			order.PutUint32(b, uint32(len(element)))
+			b = b[4+copy(b[4:], element):]
+		}
+	}
+	order.PutUint32(b, uint32(len(i.ms)))
+	b = b[4:]
+	for key, value := range i.ms {
+		_ = b[:4+len(key)]
+		order.PutUint32(b, uint32(len(key)))
+		b = b[4+copy(b[4:], key):]
+		_ = b[:4+len(value)]
+		order.PutUint32(b, uint32(len(value)))
+		b = b[4+copy(b[4:], value):]
+	}
+	order.PutUint32(b, uint32(len(i.mms)))
+	b = b[4:]
+	for key, value := range i.mms {
+		_ = b[:4+len(key)]
+		order.PutUint32(b, uint32(len(key)))
+		b = b[4+copy(b[4:], key):]
+		order.PutUint32(b, uint32(len(value)))
+		b = b[4:]
+		for key, value := range value {
+			_ = b[:4+len(key)]
+			order.PutUint32(b, uint32(len(key)))
+			b = b[4+copy(b[4:], key):]
+			_ = b[:4+len(value)]
+			order.PutUint32(b, uint32(len(value)))
+			b = b[4+copy(b[4:], value):]
+		}
+	}
+	order.PutUint64(b, uint64(i.si.uint64))
+	b = b[8:]
+	i.C.Serialize(b, order)
+	b = b[i.C.SerializeLen():]
+}
+
+func (i *A) Deserialize(b []byte, order binary.ByteOrder) {
+	i.B.Deserialize(b, order)
+	b = b[i.B.SerializeLen():]
+	for k := uint(0); k < 3; k++ {
+		i.a[k].Deserialize(b, order)
+		b = b[i.a[k].SerializeLen():]
 	}
 	{
-		l := uint(b[3]) | uint(b[2])<<8 | uint(b[1])<<16 | uint(b[0])<<24
+		n := order.Uint32(b)
+		i.s = string(b[4 : 4+n])
+		b = b[4+n:]
+	}
+	{
+		l := uint(order.Uint32(b[:4]))
 		b = b[4:]
 		i.ss = make([]string, l, l)
 		b = b[l:]
 		for k := uint(0); k < l; k++ {
 			{
-				l := uint(b[3]) | uint(b[2])<<8 | uint(b[1])<<16 | uint(b[0])<<24
-				b = b[4:]
-				i.ss[k] = string(b[:l])
-				b = b[l:]
+				n := order.Uint32(b)
+				i.ss[k] = string(b[4 : 4+n])
+				b = b[4+n:]
 			}
 		}
 	}
 	{
-		l := uint(b[3]) | uint(b[2])<<8 | uint(b[1])<<16 | uint(b[0])<<24
+		l := uint(order.Uint32(b[:4]))
 		b = b[4:]
 		i.sss = make([][]string, l, l)
 		b = b[l:]
 		for k := uint(0); k < l; k++ {
 			{
-				l := uint(b[3]) | uint(b[2])<<8 | uint(b[1])<<16 | uint(b[0])<<24
+				l := uint(order.Uint32(b[:4]))
 				b = b[4:]
 				i.sss[k] = make([]string, l, l)
 				b = b[l:]
 				for k := uint(0); k < l; k++ {
 					{
-						l := uint(b[3]) | uint(b[2])<<8 | uint(b[1])<<16 | uint(b[0])<<24
-						b = b[4:]
-						i.sss[k][k] = string(b[:l])
-						b = b[l:]
+						n := order.Uint32(b)
+						i.sss[k][k] = string(b[4 : 4+n])
+						b = b[4+n:]
 					}
 				}
 			}
 		}
 	}
 	{
-		l := uint(b[3]) | uint(b[2])<<8 | uint(b[1])<<16 | uint(b[0])<<24
+		l := uint(order.Uint32(b[:4]))
 		b = b[4:]
 		m := make(map[string]string)
 		for k := uint(0); k < l; k++ {
 			var key string
 			var value string
 			{
-				l := uint(b[3]) | uint(b[2])<<8 | uint(b[1])<<16 | uint(b[0])<<24
-				b = b[4:]
-				key = string(b[:l])
-				b = b[l:]
+				n := order.Uint32(b)
+				key = string(b[4 : 4+n])
+				b = b[4+n:]
 			}
 			{
-				l := uint(b[3]) | uint(b[2])<<8 | uint(b[1])<<16 | uint(b[0])<<24
-				b = b[4:]
-				value = string(b[:l])
-				b = b[l:]
+				n := order.Uint32(b)
+				value = string(b[4 : 4+n])
+				b = b[4+n:]
 			}
 			m[key] = value
 		}
 		i.ms = m
 	}
 	{
-		l := uint(b[3]) | uint(b[2])<<8 | uint(b[1])<<16 | uint(b[0])<<24
+		l := uint(order.Uint32(b[:4]))
 		b = b[4:]
 		m := make(map[string]map[string]string)
 		for k := uint(0); k < l; k++ {
 			var key string
 			var value map[string]string
 			{
-				l := uint(b[3]) | uint(b[2])<<8 | uint(b[1])<<16 | uint(b[0])<<24
-				b = b[4:]
-				key = string(b[:l])
-				b = b[l:]
+				n := order.Uint32(b)
+				key = string(b[4 : 4+n])
+				b = b[4+n:]
 			}
 			{
-				l := uint(b[3]) | uint(b[2])<<8 | uint(b[1])<<16 | uint(b[0])<<24
+				l := uint(order.Uint32(b[:4]))
 				b = b[4:]
 				m := make(map[string]string)
 				for k := uint(0); k < l; k++ {
 					var key string
 					var value string
 					{
-						l := uint(b[3]) | uint(b[2])<<8 | uint(b[1])<<16 | uint(b[0])<<24
-						b = b[4:]
-						key = string(b[:l])
-						b = b[l:]
+						n := order.Uint32(b)
+						key = string(b[4 : 4+n])
+						b = b[4+n:]
 					}
 					{
-						l := uint(b[3]) | uint(b[2])<<8 | uint(b[1])<<16 | uint(b[0])<<24
-						b = b[4:]
-						value = string(b[:l])
-						b = b[l:]
+						n := order.Uint32(b)
+						value = string(b[4 : 4+n])
+						b = b[4+n:]
 					}
 					m[key] = value
 				}
@@ -204,8 +212,8 @@ func (i *A) Deserialize(b []byte) []byte {
 		}
 		i.mms = m
 	}
-	i.si.uint64 = uint64(b[7]) | uint64(b[6])<<8 | uint64(b[5])<<16 | uint64(b[4])<<24 | uint64(b[3])<<32 | uint64(b[2])<<40 | uint64(b[1])<<48 | uint64(b[0])<<56
+	i.si.uint64 = uint64(order.Uint64(b[:8]))
 	b = b[8:]
-	b = i.C.Deserialize(b)
-	return b
+	i.C.Deserialize(b, order)
+	b = b[i.C.SerializeLen():]
 }
